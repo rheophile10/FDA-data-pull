@@ -1,5 +1,6 @@
 import pandas as pd
 from datetime import datetime
+import os
 
 class Transformer():
     def __init__(self, source_data, end_data, final_columns):
@@ -13,20 +14,20 @@ class Transformer():
         return pd.read_csv(self.source_data, sep='~')
     
     def _transform(self):
-        transformations = [method for method in dir(self) if method.startswith('_transform_')]
+        transformations = [getattr(self, method) for method in dir(self) if method.startswith('_transform_')]
         print('transforming data')
         for transformation in transformations:
             print(f'    applying {transformation.__name__} to data')
-            self.data = transformation(self.data)
+            transformation()
         self.data = self.data[self.final_columns]
     
     def _load(self, filename_prefix):
         print('loading data')
-        filename = filename + datetime.strftime(datetime.utcnow(),'_STAN_%d_%b.xlsx')
-        self.data.to_excel(filename)
+        filename = os.getcwd()+self.end_data + filename_prefix + datetime.strftime(datetime.utcnow(),'_STAN_%d_%b.xlsx')
+        self.data.to_excel(filename, index=False)
 
     def etl(self, filename_prefix):
-        self._extract()
+        self.data = self._extract()
         self._transform()
         self._load(filename_prefix)
 

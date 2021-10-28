@@ -11,8 +11,9 @@ They are downloaded in a zip file with three CSV files, one each for products, p
 import requests
 import zipfile
 import io
-from transformer import Transformer
+from .transformer import Transformer
 from datetime import datetime
+import numpy as np
 
 class OrangeBook():
     def __init__(self, orange_book_url = 'https://www.fda.gov/media/76860/download', 
@@ -20,21 +21,36 @@ class OrangeBook():
         self.orange_book_url = orange_book_url
         self.raw_data_path = raw_data_path
         
-    def get_unzipped_data(self):
+    def _get_unzipped_data(self):
         response = requests.get(self.orange_book_url)
         z = zipfile.ZipFile(io.BytesIO(response.content))
         z.extractall(self.raw_data_path)
 
+    def get_orange_book(self):
+        print('processing orange book data')
+        print(f'   getting orange book data from {self.orange_book_url}')
+        self._get_unzipped_data()
+        print('processing product data')
+        products = Product('products.txt', self.raw_data_path)
+        products.etl(products.name)
+        trade_name_map = products.yield_trade_name_map()
+        molecule_map = products.yield_molecule_map()
+        print('processing exclusivity data')
+        exclusivity = Exclusivity('exclusivity.txt', molecule_map, self.raw_data_path)
+        exclusivity.etl(exclusivity.name)
+        print('processing patent data')
+        patents = Patent('patent.txt', trade_name_map, self.raw_data_path)
+        patents.etl(patents.name)
+
 class Product(Transformer):
-    def __init__(self, raw_file, products_map, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, raw_data_path = '/raw_data/'):
         self.name = 'OBProd'
         self.raw_data = raw_data_path + raw_file
-        self.products = products_map
-        super().__init__(self.raw_data_path + raw_file, end_data='/finished data/',
+        super().__init__(self.raw_data, end_data='\\finished data\\',
                             final_columns = ['Entity_NonProp Name', 'Ingredient', 'DF',
                                 'Route', 'Entity_Trade Name', 'Trade_Name', 'Applicant',
                                 'Strength', 'Appl_Type', 'Entity_Trade Name_AP#PR#',
-                                'Entity_Trade Name_AP#PR#_App_Date', 'Entity_AP#PR#',
+                                'Entity_Trade Name_AP#PR#_App Date', 'Entity_AP#PR#',
                                 'Appl_No', 'Product_No', 'TE_Code', 'Entity_Approval_Date',
                                 'RLD', 'RS', 'Type', 'Applicant_Full_Name', 'Source',
                                 'Text Approval Date'])
@@ -55,7 +71,7 @@ class Product(Transformer):
             return f'{trade_name} (Trade Name)'
         self.data['Entity_Trade Name'] = self.data.apply(Entity_Trade_Name, axis=1)
     
-    def _transofrm_Entity_Trade_Name_AP_PR_(self):
+    def _transform_Entity_Trade_Name_AP_PR_(self):
         def Entity_Trade_Name_AP_PR_(row):
             trade_name = row['Trade_Name']
             ap = row['Appl_No']
@@ -68,7 +84,8 @@ class Product(Transformer):
             trade_name = row['Trade_Name']
             ap = row['Appl_No']
             pr = row['Product_No']
-            appr_date = datetime.strptime(row['Approval_Date'],'%b %d, %Y').strftime('%#m/%#d/%y')
+            appr_date = 'Jan 1, 1982' if row['Approval_Date'] == 'Approved Prior to Jan 1, 1982' else row['Approval_Date'] 
+            appr_date = datetime.strptime(appr_date,'%b %d, %Y').strftime('%#m/%#d/%Y')
             return f'Appr Date {trade_name} AP#{ap}PR#{pr}-{appr_date}'
         self.data['Entity_Trade Name_AP#PR#_App Date'] = self.data.apply(Entity_Trade_Name_AP_PR_App_Date, axis=1)
     
@@ -77,26 +94,56 @@ class Product(Transformer):
             ap = row['Appl_No']
             pr = row['Product_No']
             return f'AP#{ap}PR#{pr}'
-        self.data['Entity_App#PR#'] = self.data.apply(Entity_App_PR_, axis = 1)
+        self.data['Entity_AP#PR#'] = self.data.apply(Entity_App_PR_, axis = 1)
         
     def _transform_Entity_Approval_Date(self):
         def convert_text_date_to_excel_ordinal(datetime) :
             offset = 693594
             n = datetime.toordinal()
             return (n - offset)
-        self.data['Entity_Approval_Date']=self.data['Exclusivity_Date'].apply(lambda date: convert_text_date_to_excel_ordinal(datetime.strptime(date,'%b %d, %Y')))
-        self.data['Text Approval Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%y'))
-        pass
+
+        def get_approval_date(row):
+            date = 'Jan 1, 1982' if row['Approval_Date'] == 'Approved Prior to Jan 1, 1982' else row['Approval_Date'] 
+            return datetime.strptime(date,'%b %d, %Y')
+                
+        self.data['Entity_Approval_Date']=self.data.apply(lambda row: convert_text_date_to_excel_ordinal(get_approval_date(row)), axis = 1)
+        self.data['Text Approval Date']=self.data.apply(lambda row: get_approval_date(row).strftime('%#m/%#d/%Y'), axis = 1)
 
     def _transform_Source(self):
         self.data['Source'] = 'FDA Orange Book'
 
+    def yield_molecule_map(self):
+        records = self.data[['Ingredient', 'Appl_No', 'Product_No']].to_dict(orient='records')
+        molecule_map = dict()
+        for record in records:
+            ap = record['Appl_No']
+            pr = record['Product_No']
+            ingredient = record['Ingredient']
+            if ap in molecule_map.keys():
+                molecule_map[ap][pr] = ingredient
+            else:
+                molecule_map[ap] = {pr:ingredient}
+        return molecule_map
+
+    def yield_trade_name_map(self):
+        records = self.data[['Trade_Name', 'Appl_No', 'Product_No']].to_dict(orient='records')
+        trade_name_map = dict()
+        for record in records:
+            ap = record['Appl_No']
+            pr = record['Product_No']
+            trade_name = record['Trade_Name']
+            if ap in trade_name_map.keys():
+                trade_name_map[ap][pr] = trade_name
+            else:
+                trade_name_map[ap] = {pr:trade_name}
+        return trade_name_map
+
 class Exclusivity(Transformer):
-    def __init__(self, raw_file, products_map, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, molecule_map, raw_data_path = '/raw_data/'):
         self.name = 'OBExcl'
         self.raw_data = raw_data_path + raw_file
-        self.products = products_map
-        super().__init__(self.raw_data, end_data = '/finished data/', 
+        self.molecule_map = molecule_map
+        super().__init__(self.raw_data, end_data = '\\finished data\\', 
                             final_columns = ['Appl_Type', 
                                 'Entity_Excl Date_Combined', 'Entity_App#PR#', 
                                 'Entity_Trade_AP#PR#', 'Appl_No', 'Product_No', 
@@ -108,7 +155,7 @@ class Exclusivity(Transformer):
             excl_code = row['Exclusivity_Code']
             ap = row['Appl_No']
             pr = row['Product_No']
-            excl_date = datetime.strptime(row['Exclusivity_Date'],'%b %d, %Y').strftime('%#m/%#d/%y')
+            excl_date = datetime.strptime(row['Exclusivity_Date'],'%b %d, %Y').strftime('%#m/%#d/%Y')
             return f'Excl Date ({excl_code}) AP#{ap}PR#{pr}-{excl_date}'
         self.data['Entity_Excl Date_Combined'] = self.data.apply(Entity_Excl_Date_Combined, axis = 1)
 
@@ -123,13 +170,121 @@ class Exclusivity(Transformer):
         def Entity_Trade_AP_PR_(row):
             ap = row['Appl_No']
             pr = row['Product_No']
-            molecule = self.products[ap][pr]
+            molecule = self.molecule_map[ap][pr]
             return f'{molecule} AP#{ap} PR#{pr}'
         self.data['Entity_Trade_AP#PR#'] = self.data.apply(Entity_Trade_AP_PR_, axis = 1)
 
     def _transform_add_dates_and_source(self):
-        self.data['Entity_Exclusivity_Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%y'))
-        self.data['Text_Exclusivity Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%y'))
+        self.data['Entity_Exclusivity_Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y'))
+        self.data['Text_Exclusivity Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y'))
 
     def _transform_Source(self):
         self.data['Source'] = 'FDA Orange Book'
+
+class Patent(Transformer):
+    def __init__(self, raw_file, trade_name_map, raw_data_path = '/raw_data/'):
+        self.name = 'OBPat'
+        self.raw_data = raw_data_path + raw_file
+        self.trade_name_map = trade_name_map
+        super().__init__(self.raw_data, end_data = '\\finished data\\', 
+                            final_columns = ['Appl_Type', 'Entity_AP#PR#',
+                                'Appl_No', 'Product_No', 'Entity_Pat Sub_Combined',
+                                'Entity_Pat Exp_Combined', 'Entity_Pat#_Trade_AP#PR#',
+                                'Entity_Pat#', 'Patent_No', 'Entity_Patent_Expire_Date',
+                                'Drug_Substance_Flag', 'Drug_Product_Flag', 'Patent_Use_Code',
+                                'Delist_Flag', 'Entity_Submission_Date', 'Source', 
+                                'Text_Patent_Expire_Date_Text', 'Text_Submission_Date',
+                                'Entity_Trade_AP#PR#2', 'Trade Name', 'Column1'])
+    
+    def _transform_Column1(self):
+        def column1(row):
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            return f'#{ap}PR#{pr}'
+        self.data['Column1'] = self.data.apply(column1, axis = 1)
+    
+    def _transform_Trade_Name(self):
+        def Trade_Name(row):
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            trade_name = self.trade_name_map[ap][pr]
+            return trade_name            
+        self.data['Trade Name'] = self.data.apply(Trade_Name, axis = 1)
+
+    def _transform_Text_Submission_Date(self):
+        def Text_Submission_Date(date):
+            return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
+        self.data['Text_Submission_Date']=self.data['Submission_Date'].apply(lambda date: Text_Submission_Date(date))
+
+    def _transform_Text_Patent_Expire_Date_Text(self):
+        def Text_Submission_Date(date):
+            return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
+        self.data['Text_Patent_Expire_Date_Text']=self.data['Patent_Expire_Date_Text'].apply(lambda date: Text_Submission_Date(date))
+    
+    def _transform_Entity_Submission_Date(self):
+        def Text_Submission_Date(date):
+            return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
+        self.data['Entity_Submission_Date']=self.data['Submission_Date'].apply(lambda date: Text_Submission_Date(date))
+
+    def _transform_Entity_Patent_Expire_Date(self):
+        def Text_Submission_Date(date):
+            return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
+        self.data['Entity_Patent_Expire_Date']=self.data['Patent_Expire_Date_Text'].apply(lambda date: Text_Submission_Date(date))
+    
+    def _transform_Entity_Pat_(self):
+        def Entity_Pat(patent_no):
+            return f'Pat#{patent_no}'
+        self.data['Entity_Pat#'] = self.data['Patent_No'].apply(lambda patent_no: Entity_Pat(patent_no))
+    
+    def _transform_Entity_Pat_Exp_Combined(self):
+        def entity_pat_exp_combined(row):
+            use_code = row['Patent_Use_Code']
+            patent = row['Patent_No']
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            exp_date = row['Patent_Expire_Date_Text']
+            exp_date = datetime.strptime(exp_date,'%b %d, %Y').strftime('%#m/%#d/%Y')
+            return f'Pat Exp ({use_code}) Pat#{patent} AP#{ap}PR#{pr}-{exp_date}'
+        self.data['Entity_Pat Exp_Combined'] = self.data.apply(entity_pat_exp_combined, axis = 1)
+    
+    def _transform_Entity_Pat_Sub_Combined(self):
+        def entity_pat_sub_combined(row):
+            use_code = row['Patent_Use_Code']
+            patent = row['Patent_No']
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            sub_date = row['Submission_Date']
+            if sub_date != sub_date:
+                sub_date = ''
+            else:
+                sub_date = datetime.strptime(sub_date,'%b %d, %Y').strftime('%#m/%#d/%Y') 
+            return f'Pat Sub  ({use_code}) Pat#{patent} AP#{ap}PR#{pr}-{sub_date}'
+        self.data['Entity_Pat Sub_Combined'] = self.data.apply(entity_pat_sub_combined, axis = 1)
+
+    def _transform_entity_Pat_Trade_AP_PR(self):
+        def entity_Pat_Trade_AP_PR(row):
+            patent = row['Patent_No']
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            trade_name = self.trade_name_map[ap][pr]
+            return f'Pat#{patent} {trade_name} AP#{ap}PR#{pr}'
+        self.data['Entity_Pat#_Trade_AP#PR#'] = self.data.apply(entity_Pat_Trade_AP_PR, axis=1)
+
+    def _transform_Entity_App_PR_(self):
+        def Entity_App_PR_(row):
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            return f'AP#{ap}PR#{pr}'
+        self.data['Entity_AP#PR#'] = self.data.apply(Entity_App_PR_, axis = 1)
+
+    def _transform_Entity_Trade_AP_PR_2(self):
+        def Entity_Trade_AP_PR_(row):
+            ap = row['Appl_No']
+            pr = row['Product_No']
+            trade_name = self.trade_name_map[ap][pr]
+            return f'{trade_name} AP#{ap} PR#{pr}'
+        self.data['Entity_Trade_AP#PR#2'] = self.data.apply(Entity_Trade_AP_PR_, axis = 1)
+    
+    def _transform_Source(self):
+        self.data['Source'] = 'FDA Orange Book'
+    
