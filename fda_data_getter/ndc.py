@@ -50,7 +50,7 @@ class NDC(Transformer):
                                             'PRODUCTTYPENAME',
                                             'Entity-Trade Name',
                                             'Entity_Start Mkt Date_Combined',
-                                            'Entity_End Mkt Date_Combined ',
+                                            'Entity_End Mkt Date_Combined',
                                             'Entity_Trade Name_NDC',
                                             'PROPRIETARYNAME',
                                             'PROPRIETARYNAMESUFFIX',
@@ -110,7 +110,10 @@ class NDC(Transformer):
         
     def _transform_entity_start_mkt_date_combined(self):
         def entity_start_mkt_date_combined(row):
-            return '' if row['STARTMARKETINGDATE']!=row['STARTMARKETINGDATE'] else datetime.strptime(str(int(row['STARTMARKETINGDATE'])),'%Y%m%d').strftime('%m/%d/%Y')
+            date = '' if row['STARTMARKETINGDATE']!=row['STARTMARKETINGDATE'] else datetime.strptime(str(int(row['STARTMARKETINGDATE'])),'%Y%m%d').strftime('%m/%d/%Y')
+            name=self.upper_row(row,'PROPRIETARYNAME')
+            ndc = row['PRODUCTNDC']
+            return f'Start Mkt Date {name} NDC{ndc}-{date}'
         self.data['Entity_Start Mkt Date_Combined'] = self.data.apply(entity_start_mkt_date_combined, axis=1)
         
     def _transform_entity_trade_name_ndc(self):

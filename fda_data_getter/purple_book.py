@@ -134,6 +134,9 @@ class BiologicalDrugs(Transformer):
         self.data['Entity_Ref Product Exclusivity Exp Date'] = self.data['Ref. Product Exclusivity Exp. Date']
         self.data['Text_Ref Product Exclusivity Exp Date'] = self.date_formula(self.data['Ref. Product Exclusivity Exp. Date'])
 
+    def _transform_product_number(self):
+        self.data['Product Number'] = self.data['Product Number'].apply(lambda row: int(row))
+
     def _transform_entity_nonprop_name(self):
         def entity_nonprop_name(row):
             name = '' if row['Proper Name']!=row['Proper Name'] else row['Proper Name'].upper()
@@ -151,7 +154,7 @@ class BiologicalDrugs(Transformer):
 
     def _transform_ref_product_proprietary_name(self):
         def ref_product_proprietary_name(row):
-            return '' if row['Ref. Product Proprietary Name']!=row['Ref. Product Proprietary Name'] else row['Ref. Product Proprietary Name'].upper()
+            return 'N/A' if row['Ref. Product Proprietary Name']!=row['Ref. Product Proprietary Name'] else row['Ref. Product Proprietary Name'].upper()
         self.data['Ref Product Proprietary Name'] = self.data.apply(ref_product_proprietary_name, axis=1)
 
     def _transform_entity_trade_name(self):
@@ -169,20 +172,20 @@ class BiologicalDrugs(Transformer):
         def entity_orph_excl_combined(row):
             name = '' if row['Proprietary Name'] != row['Proprietary Name'] else row['Proprietary Name'].upper()
             bla = row['BLA Number']
-            pr = row['Product Number']
-            date = row['Orphan Exclusivity Exp. Date']
+            pr = int(row['Product Number'])
+            date = '' if row['Orphan Exclusivity Exp. Date'] != row['Orphan Exclusivity Exp. Date'] else row['Orphan Exclusivity Exp. Date']
             return f'Orph Excl Date {name} BLA#{bla}PR#{pr}-{date}'
         self.data['Entity_Orph Excl_Combined'] = self.data.apply(entity_orph_excl_combined, axis=1)
 
     def _transform_entity_applicant(self):
         def entity_applicant(row):
-            return '' if row['Applicant']!=row['Applicant'] else row['Applicant'].upper()
+            return '' if row['Applicant']!=row['Applicant'] else row['Applicant'].upper().replace('.','')
         self.data['Entity_Applicant'] = self.data.apply(entity_applicant, axis=1)
 
     def _transform_entity_bla_pr_(self):
         def entity_bla_pr_(row):
             bla = row['BLA Number']
-            pr = row['Product Number']
+            pr = int(row['Product Number'])
             return f'BLA#{bla}PR#{pr}'
         self.data['Entity_BLA#PR#'] = self.data.apply(entity_bla_pr_, axis=1)
 
@@ -190,22 +193,21 @@ class BiologicalDrugs(Transformer):
         def entity_trade_name_bla_pr__1(row):
             name = '' if row['Proprietary Name'] != row['Proprietary Name'] else row['Proprietary Name'].upper()
             bla = row['BLA Number']
-            pr = row['Product Number']
+            pr = int(row['Product Number'])
             return f'{name} BLA#{bla}PR#{pr}'
         self.data['Entity_Trade Name_BLA#PR#.1'] = self.data.apply(entity_trade_name_bla_pr__1, axis=1)
 
     def _transform_ref_product_proper_name(self):
         def ref_product_proper_name(row):
-            return '' if row['Ref. Product Proper Name']!=row['Ref. Product Proper Name'] else row['Ref. Product Proper Name'].upper()
-
+            return 'N/A' if row['Ref. Product Proper Name']!=row['Ref. Product Proper Name'] else row['Ref. Product Proper Name'].upper()
         self.data['Ref Product Proper Name'] = self.data.apply(ref_product_proper_name, axis=1)
 
     def _transform_entity_appr_date_combined(self):
         def entity_appr_date_combined(row):
             name = '' if row['Proprietary Name'] != row['Proprietary Name'] else row['Proprietary Name'].upper()
             bla = row['BLA Number']
-            pr = row['Product Number']
-            date = row['Approval Date']
+            pr = int(row['Product Number'])
+            date = '' if row['Approval Date']!=row['Approval Date'] else ''
             return f'Appr Date {name} BLA#{bla}PR#{pr}-{date}'
         self.data['Entity_Appr Date_Combined'] = self.data.apply(entity_appr_date_combined, axis=1)
 
@@ -237,8 +239,8 @@ class PurplePatents(Transformer):
     def _transform_entity_trade_name_pat___exp_date(self):
         def entity_trade_name_pat___exp_date(row):
             trade_name = '' if row['Proprietary Name']!=row['Proprietary Name'] else row['Proprietary Name'].upper()
-            patent = row['Patent Number']
-            date = datetime.strptime(row['Text Patent Expiration Date'],'%Y-%m-%d').strftime('%m/%d/%Y')
+            patent = row['Patent Number'].replace(',','')
+            date = '' if row['Text Patent Expiration Date']!= row['Text Patent Expiration Date'] else datetime.strptime(row['Text Patent Expiration Date'],'%Y-%m-%d').strftime('%m/%d/%Y')
             return f'{trade_name} Pat#{patent} Patent Exp Date {date}'
         self.data['Entity_Trade Name_Pat#_ Exp Date'] = self.data.apply(entity_trade_name_pat___exp_date, axis=1)
         
@@ -262,11 +264,13 @@ class PurplePatents(Transformer):
     def _transform_column11(self):
         def column11(row):
             name = '' if row['Proprietary Name']!=row['Proprietary Name'] else row['Proprietary Name'].upper()
-            pat = row['Patent Number']
+            pat = row['Patent Number'].replace(',','')
             return f'{name} Pat#{pat}'
         self.data['Column11'] = self.data.apply(column11, axis=1)
+        self.data['Patent Number'] = self.data['Patent Number'].apply(lambda row: row.replace(',',''))
         
     def _transform_entity_applicant(self):
         def applicant(row):
-            return '' if row['Applicant']!=row['Applicant'] else row['Applicant'].upper()
+            return '' if row['Applicant']!=row['Applicant'] else row['Applicant'].upper().replace('.','')
         self.data['Entity_Applicant'] = self.data.apply(applicant, axis=1)
+        self.data['Applicant']=self.data['Applicant'].apply(lambda row: row.replace('.',''))
