@@ -17,7 +17,7 @@ import numpy as np
 
 class OrangeBook():
     def __init__(self, orange_book_url = 'https://www.fda.gov/media/76860/download', 
-                                            raw_data_path = '/raw_data/'):
+                                            raw_data_path = 'raw_data/'):
         self.orange_book_url = orange_book_url
         self.raw_data_path = raw_data_path
         
@@ -26,7 +26,7 @@ class OrangeBook():
         z = zipfile.ZipFile(io.BytesIO(response.content))
         z.extractall(self.raw_data_path)
 
-    def get_orange_book(self):
+    def get_book(self):
         print('processing orange book data')
         print(f'   getting orange book data from {self.orange_book_url}')
         self._get_unzipped_data()
@@ -43,7 +43,7 @@ class OrangeBook():
         patents.etl(patents.name)
 
 class Product(Transformer):
-    def __init__(self, raw_file, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, raw_data_path = 'raw_data/'):
         self.name = 'OBProd'
         self.raw_data = raw_data_path + raw_file
         super().__init__(self.raw_data, end_data='\\finished data\\',
@@ -57,7 +57,7 @@ class Product(Transformer):
         
     def _transform_Entity_NonProp_Name(self):
         def Entity_NonProp_Name(row):
-            ingredient = row['Ingredient']
+            ingredient = row['Ingredient'].upper()
             return f'{ingredient} (NonProp Name)'
         self.data['Entity_NonProp Name'] = self.data.apply(Entity_NonProp_Name, axis = 1)
     
@@ -67,13 +67,13 @@ class Product(Transformer):
     
     def _transform_Entity_Trade_Name(self):
         def Entity_Trade_Name(row):
-            trade_name = row['Trade_Name']
+            trade_name = row['Trade_Name'].upper()
             return f'{trade_name} (Trade Name)'
         self.data['Entity_Trade Name'] = self.data.apply(Entity_Trade_Name, axis=1)
     
     def _transform_Entity_Trade_Name_AP_PR_(self):
         def Entity_Trade_Name_AP_PR_(row):
-            trade_name = row['Trade_Name']
+            trade_name = row['Trade_Name'].upper()
             ap = row['Appl_No']
             pr = row['Product_No']
             return f'{trade_name} AP#{ap} PR#{pr}'
@@ -81,7 +81,7 @@ class Product(Transformer):
 
     def _transform_Entity_Trade_Name_AP_PR_App_Date(self):
         def Entity_Trade_Name_AP_PR_App_Date(row):
-            trade_name = row['Trade_Name']
+            trade_name = row['Trade_Name'].upper()
             ap = row['Appl_No']
             pr = row['Product_No']
             appr_date = 'Jan 1, 1982' if row['Approval_Date'] == 'Approved Prior to Jan 1, 1982' else row['Approval_Date'] 
@@ -118,7 +118,7 @@ class Product(Transformer):
         for record in records:
             ap = record['Appl_No']
             pr = record['Product_No']
-            ingredient = record['Ingredient']
+            ingredient = record['Ingredient'].upper()
             if ap in molecule_map.keys():
                 molecule_map[ap][pr] = ingredient
             else:
@@ -131,7 +131,7 @@ class Product(Transformer):
         for record in records:
             ap = record['Appl_No']
             pr = record['Product_No']
-            trade_name = record['Trade_Name']
+            trade_name = record['Trade_Name'].upper()
             if ap in trade_name_map.keys():
                 trade_name_map[ap][pr] = trade_name
             else:
@@ -139,7 +139,7 @@ class Product(Transformer):
         return trade_name_map
 
 class Exclusivity(Transformer):
-    def __init__(self, raw_file, molecule_map, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, molecule_map, raw_data_path = 'raw_data/'):
         self.name = 'OBExcl'
         self.raw_data = raw_data_path + raw_file
         self.molecule_map = molecule_map
@@ -182,7 +182,7 @@ class Exclusivity(Transformer):
         self.data['Source'] = 'FDA Orange Book'
 
 class Patent(Transformer):
-    def __init__(self, raw_file, trade_name_map, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, trade_name_map, raw_data_path = 'raw_data/'):
         self.name = 'OBPat'
         self.raw_data = raw_data_path + raw_file
         self.trade_name_map = trade_name_map

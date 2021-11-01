@@ -2,4 +2,6 @@ tests.ipynb
 venv
 *.xlsx
 *.txt
+*.xls
+*.csv
 __pycache__
