@@ -16,8 +16,9 @@ import pandas as pd
 from .transformer import Transformer
 
 class PurpleBook():
-    def __init__(self, raw_data_path = 'raw_data/'):
+    def __init__(self, raw_data_path = 'raw_data/', format='xlsx'):
         self.raw_data_path = raw_data_path
+        self.format = format
         
     def _get_biologics(self):
         def find_date(date):
@@ -56,17 +57,18 @@ class PurpleBook():
         print('processing purple book data')
         self._get_data()
         print('processing biologics data')
-        biologics = BiologicalDrugs('purple_book_database_extract.csv', self.raw_data_path)
+        biologics = BiologicalDrugs('purple_book_database_extract.csv', self.raw_data_path, self.format)
         biologics.etl(biologics.name)
         print('processing biologics patent data')
-        purple_patents = PurplePatents('purple_patent.csv', self.raw_data_path)
+        purple_patents = PurplePatents('purple_patent.csv', self.raw_data_path, self.format)
         purple_patents.etl(purple_patents.name)
 
 class BiologicalDrugs(Transformer):
-    def __init__(self, raw_file, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, raw_data_path = 'raw_data/', format='xlsx'):
         self.name = 'PB'
         self.raw_data = raw_data_path + raw_file
-        super().__init__(self.raw_data, end_data='\\finished data\\',
+        self.format = format
+        super().__init__(self.raw_data, end_data='\\finished data\\', format = self.format,
                             final_columns = ['N/R/U', 'Entity_Applicant',
                                             'Entity_Appr Date_Combined',
                                             'Entity_Orph Excl_Combined',
@@ -114,23 +116,23 @@ class BiologicalDrugs(Transformer):
         return data
 
     def _transform_dates(self):
-        self.data['Text_Entity_Date of First Licensure'] = self.data['Date of First Licensure']
+        self.data['Text_Entity_Date of First Licensure'] = self.date_formula(self.data['Date of First Licensure'])
         self.data['Entity_Date of First Licensure'] = self.data['Date of First Licensure']
         #
-        self.data['Text_Orphan Exclusivity Exp Date'] = self.data['Orphan Exclusivity Exp. Date']
+        self.data['Text_Orphan Exclusivity Exp Date'] = self.date_formula(self.data['Orphan Exclusivity Exp. Date'])
         self.data['Entity_Orphan Exclusivity Exp Date'] = self.data['Orphan Exclusivity Exp. Date']
         #
-        self.data['Text_First Interchangeable Exclusivity Exp Date'] = self.data['First Interchangeable Exclusivity Exp. Date']
+        self.data['Text_First Interchangeable Exclusivity Exp Date'] = self.date_formula(self.data['First Interchangeable Exclusivity Exp. Date'])
         self.data['First Interchangeable Exclusivity Exp Date'] = self.data['First Interchangeable Exclusivity Exp. Date']
         #
-        self.data['Text_Exclusivity Expiration Date'] = self.data['Exclusivity Expiration Date']
+        self.data['Text_Exclusivity Expiration Date'] = self.date_formula(self.data['Exclusivity Expiration Date'])
         self.data['Entity_Exclusivity Expiration Date'] = self.data['Exclusivity Expiration Date']
         #
         self.data['Entity_Approval Date'] = self.data['Approval Date']
-        self.data['Text_Approval Date'] = self.data['Approval Date']
+        self.data['Text_Approval Date'] = self.date_formula(self.data['Approval Date'])
         #
         self.data['Entity_Ref Product Exclusivity Exp Date'] = self.data['Ref. Product Exclusivity Exp. Date']
-        self.data['Text_Ref Product Exclusivity Exp Date'] = self.data['Ref. Product Exclusivity Exp. Date']
+        self.data['Text_Ref Product Exclusivity Exp Date'] = self.date_formula(self.data['Ref. Product Exclusivity Exp. Date'])
 
     def _transform_entity_nonprop_name(self):
         def entity_nonprop_name(row):
@@ -208,10 +210,11 @@ class BiologicalDrugs(Transformer):
         self.data['Entity_Appr Date_Combined'] = self.data.apply(entity_appr_date_combined, axis=1)
 
 class PurplePatents(Transformer):
-    def __init__(self, raw_file, raw_data_path = '/raw_data/'):
+    def __init__(self, raw_file, raw_data_path = 'raw_data/', format='xlsx'):
             self.name = 'PBPat'
             self.raw_data = raw_data_path + raw_file
-            super().__init__(self.raw_data, end_data='\\finished data\\',
+            self.format = format
+            super().__init__(self.raw_data, end_data='\\finished data\\', format=self.format, 
                                 final_columns = ['Entity_BLA#', 'Reference Product BLA Number', 
                                 'Entity_Applicant', 'Applicant', 'Entity_Trade Name', 'Proprietary Name', 
                                 'Entity_Non Prop Name', 'Column9', 'Proper Name', 'Column11', 
@@ -221,6 +224,9 @@ class PurplePatents(Transformer):
     def _extract(self):
         print(f'extracting {self.source_data}')
         return pd.read_csv(self.source_data)
+
+    def _transform_zdate(self):
+        self.data['Text Patent Expiration Date']=self.date_formula(self.data['Text Patent Expiration Date'])
 
     def _transform_entity_trade_name(self):
         def entity_trade_name(row):

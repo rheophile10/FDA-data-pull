@@ -3,11 +3,12 @@ from datetime import datetime
 import os
 
 class Transformer():
-    def __init__(self, source_data, end_data, final_columns):
+    def __init__(self, source_data, end_data, final_columns, format):
         self.source_data = source_data
         self.final_columns = final_columns
         self.data = []
         self.end_data = end_data
+        self.format=format
     
     def _extract(self):
         print(f'extracting {self.source_data}')
@@ -23,8 +24,17 @@ class Transformer():
     
     def _load(self, filename_prefix):
         print('loading data')
-        filename = os.getcwd()+self.end_data + filename_prefix + datetime.strftime(datetime.utcnow(),'_STAN_%d_%b.xlsx')
-        self.data.to_excel(filename, index=False)
+        filename = os.getcwd()+self.end_data + filename_prefix + datetime.strftime(datetime.utcnow(),'_STAN_%d_%b.'+self.format)
+        if self.format == 'xlsx':
+            self.data.to_excel(filename, index=False)
+        elif self.format == 'csv': 
+            self.data.to_csv(filename,index=False)
+
+    def date_formula(self, col):
+        if self.format == 'xlsx':
+            return '="'+col+'"'
+        else:
+            return col
 
     def etl(self, filename_prefix):
         self.data = self._extract()

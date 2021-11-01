@@ -17,4 +17,9 @@ pip install -r requirements.txt
 python main.py
 ```
 
+default output data format is xlsx but you can change the output format to csv with the following args
+
+```
+python main.py csv
+```
 

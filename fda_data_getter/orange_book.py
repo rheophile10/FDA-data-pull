@@ -17,9 +17,10 @@ import numpy as np
 
 class OrangeBook():
     def __init__(self, orange_book_url = 'https://www.fda.gov/media/76860/download', 
-                                            raw_data_path = 'raw_data/'):
+                        raw_data_path = 'raw_data/', format='xlsx'):
         self.orange_book_url = orange_book_url
         self.raw_data_path = raw_data_path
+        self.format = format
         
     def _get_unzipped_data(self):
         response = requests.get(self.orange_book_url)
@@ -31,22 +32,23 @@ class OrangeBook():
         print(f'   getting orange book data from {self.orange_book_url}')
         self._get_unzipped_data()
         print('processing product data')
-        products = Product('products.txt', self.raw_data_path)
+        products = Product('products.txt', self.raw_data_path, self.format)
         products.etl(products.name)
         trade_name_map = products.yield_trade_name_map()
         molecule_map = products.yield_molecule_map()
         print('processing exclusivity data')
-        exclusivity = Exclusivity('exclusivity.txt', molecule_map, self.raw_data_path)
+        exclusivity = Exclusivity('exclusivity.txt', molecule_map, self.raw_data_path, self.format)
         exclusivity.etl(exclusivity.name)
         print('processing patent data')
-        patents = Patent('patent.txt', trade_name_map, self.raw_data_path)
+        patents = Patent('patent.txt', trade_name_map, self.raw_data_path, self.format)
         patents.etl(patents.name)
 
 class Product(Transformer):
-    def __init__(self, raw_file, raw_data_path = 'raw_data/'):
+    def __init__(self, raw_file, raw_data_path = 'raw_data/', format='xlsx'):
         self.name = 'OBProd'
         self.raw_data = raw_data_path + raw_file
-        super().__init__(self.raw_data, end_data='\\finished data\\',
+        self.format = format
+        super().__init__(self.raw_data, end_data='\\finished data\\', format = self.format,
                             final_columns = ['Entity_NonProp Name', 'Ingredient', 'DF',
                                 'Route', 'Entity_Trade Name', 'Trade_Name', 'Applicant',
                                 'Strength', 'Appl_Type', 'Entity_Trade Name_AP#PR#',
@@ -107,7 +109,7 @@ class Product(Transformer):
             return datetime.strptime(date,'%b %d, %Y')
                 
         self.data['Entity_Approval_Date']=self.data.apply(lambda row: convert_text_date_to_excel_ordinal(get_approval_date(row)), axis = 1)
-        self.data['Text Approval Date']=self.data.apply(lambda row: get_approval_date(row).strftime('%#m/%#d/%Y'), axis = 1)
+        self.data['Text Approval Date']=self.data.apply(lambda row: self.date_formula(get_approval_date(row).strftime('%#m/%#d/%Y')), axis = 1)
 
     def _transform_Source(self):
         self.data['Source'] = 'FDA Orange Book'
@@ -139,11 +141,12 @@ class Product(Transformer):
         return trade_name_map
 
 class Exclusivity(Transformer):
-    def __init__(self, raw_file, molecule_map, raw_data_path = 'raw_data/'):
+    def __init__(self, raw_file, molecule_map, raw_data_path = 'raw_data/', format='xlsx'):
         self.name = 'OBExcl'
         self.raw_data = raw_data_path + raw_file
         self.molecule_map = molecule_map
-        super().__init__(self.raw_data, end_data = '\\finished data\\', 
+        self.format = format
+        super().__init__(self.raw_data, end_data = '\\finished data\\', format = self.format, 
                             final_columns = ['Appl_Type', 
                                 'Entity_Excl Date_Combined', 'Entity_App#PR#', 
                                 'Entity_Trade_AP#PR#', 'Appl_No', 'Product_No', 
@@ -176,17 +179,18 @@ class Exclusivity(Transformer):
 
     def _transform_add_dates_and_source(self):
         self.data['Entity_Exclusivity_Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y'))
-        self.data['Text_Exclusivity Date']=self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y'))
+        self.data['Text_Exclusivity Date']=self.date_formula(self.data['Exclusivity_Date'].apply(lambda date: datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y')))
 
     def _transform_Source(self):
         self.data['Source'] = 'FDA Orange Book'
 
 class Patent(Transformer):
-    def __init__(self, raw_file, trade_name_map, raw_data_path = 'raw_data/'):
+    def __init__(self, raw_file, trade_name_map, raw_data_path = 'raw_data/', format='xlsx'):
         self.name = 'OBPat'
         self.raw_data = raw_data_path + raw_file
         self.trade_name_map = trade_name_map
-        super().__init__(self.raw_data, end_data = '\\finished data\\', 
+        self.format = format
+        super().__init__(self.raw_data, end_data = '\\finished data\\', format = self.format,
                             final_columns = ['Appl_Type', 'Entity_AP#PR#',
                                 'Appl_No', 'Product_No', 'Entity_Pat Sub_Combined',
                                 'Entity_Pat Exp_Combined', 'Entity_Pat#_Trade_AP#PR#',
@@ -214,12 +218,12 @@ class Patent(Transformer):
     def _transform_Text_Submission_Date(self):
         def Text_Submission_Date(date):
             return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
-        self.data['Text_Submission_Date']=self.data['Submission_Date'].apply(lambda date: Text_Submission_Date(date))
+        self.data['Text_Submission_Date']=self.date_formula(self.data['Submission_Date'].apply(lambda date: Text_Submission_Date(date)))
 
     def _transform_Text_Patent_Expire_Date_Text(self):
         def Text_Submission_Date(date):
             return datetime.strptime(date,'%b %d, %Y').strftime('%#m/%#d/%Y') if not date != date else np.nan
-        self.data['Text_Patent_Expire_Date_Text']=self.data['Patent_Expire_Date_Text'].apply(lambda date: Text_Submission_Date(date))
+        self.data['Text_Patent_Expire_Date_Text']=self.date_formula(self.data['Patent_Expire_Date_Text'].apply(lambda date: Text_Submission_Date(date)))
     
     def _transform_Entity_Submission_Date(self):
         def Text_Submission_Date(date):
