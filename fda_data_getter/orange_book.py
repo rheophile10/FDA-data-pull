@@ -106,7 +106,7 @@ class Product(Transformer):
 
         def get_approval_date(row):
             date = 'Jan 1, 1982' if row['Approval_Date'] == 'Approved Prior to Jan 1, 1982' else row['Approval_Date'] 
-            return datetime.strptime(date,'%b %d, %Y')
+            return datetime.strptime(str(date),'%b %d, %Y')
                 
         self.data['Entity_Approval_Date']=self.data.apply(lambda row: convert_text_date_to_excel_ordinal(get_approval_date(row)), axis = 1)
         self.data['Text Approval Date']=self.data.apply(lambda row: self.date_formula(get_approval_date(row).strftime('%#m/%#d/%Y')), axis = 1)
