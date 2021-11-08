@@ -19,9 +19,9 @@ def main(format='xlsx'):
     print(f'\033[92mDone! Operation took {elapsed} minutes\033[0m')
 
 if __name__ == '__main__': 
-    for dirs in ['raw_data', 'finished data']:
-        if not os.path.exists(dirs):
-            os.mkdirs(dirs)
+    for dir in ['raw_data', 'finished data']:
+        if not os.path.exists(dir):
+            os.mkdir(dir)
     if len(sys.argv) > 1: 
         run_format = sys.argv[1]
         if run_format not in ('xlsx', 'csv'):
